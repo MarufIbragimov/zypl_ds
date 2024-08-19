@@ -1,4 +1,5 @@
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
@@ -62,3 +63,20 @@ def build_churn_model(data, cat_features):
 
     return model, X_train, y_train, X_test, y_test, auc_train, auc_test
 
+def plot_feature_importance(model, feature_names):
+    """
+    Создаёт диаграмму feature_importance.
+
+    Принимает:
+        * model - модель
+        * feature_names - список предикторов
+    """
+    feature_importance = model.get_feature_importance()
+    sorted_idx = feature_importance.argsort()
+
+    plt.figure(figsize=(10, 6))
+    plt.barh(feature_names[sorted_idx], feature_importance[sorted_idx], align='center')
+    plt.xlabel('Feature Importance')
+    plt.title('Feature Importance Plot')
+
+    plt.show()
