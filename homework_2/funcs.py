@@ -16,8 +16,10 @@ def get_bank_data():
     """
     source_file='data/Bank Customer Churn Prediction.csv'
     
-    df=pd.read_csv(source_file)
+    df=pd.read_csv(source_file).drop(labels=['customer_id'], axis=1)
     return df
+
+
 
 def build_churn_model(data, cat_features):
     """
@@ -37,7 +39,7 @@ def build_churn_model(data, cat_features):
         * auc_test - ROC_AUC тестового сета
     """    
     target='churn'
-    df=data.copy().drop(labels=['customer_id'], axis=1)
+    df=data.copy()
 
     X=df.drop(labels=[target], axis=1)
     y=df[target]
@@ -64,6 +66,8 @@ def build_churn_model(data, cat_features):
 
     return model, X_train, y_train, X_test, y_test, auc_train, auc_test
 
+
+
 def plot_feature_importance(model, feature_names):
     """
     Создаёт диаграмму feature_importance.
@@ -81,6 +85,8 @@ def plot_feature_importance(model, feature_names):
     plt.title('Feature Importance Plot')
 
     plt.show()
+
+
 
 def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_feature):
     """
@@ -145,3 +151,4 @@ def plot_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features)
         print(f"\nAUC and Counts for {feature} sorted by AUC difference:\n")
         display(df_results_sorted.drop(['AUC Difference'], axis=1))
         print("\n" + "-" * 50 + "\n")
+
