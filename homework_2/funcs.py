@@ -141,6 +141,8 @@ def plot_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features)
         * y_test - тестовый сет целевой переменной
         * cat_features - список категориального предикторов
     """
+    if type(cat_features)!=list:
+        cat_features=[cat_features]
     for feature in cat_features:
         results = compute_auc_per_category(model, X_train, y_train, X_test, y_test, feature)
         df_results = pd.DataFrame(results, columns=['Category', 'Train Count', 'Train AUC', 'Test Count', 'Test AUC'])
@@ -152,3 +154,22 @@ def plot_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features)
         display(df_results_sorted.drop(['AUC Difference'], axis=1))
         print("\n" + "-" * 50 + "\n")
 
+
+
+def compare_proportions(cat, train_set, test_set):
+    """
+    Считает пропорции категорий переданного предиктора в тренировочном и тестовом сете.
+
+    Принимает:
+        * cat - название категориального предиктора
+        * train_set - тренировочный сет
+        * test_set - тестовый сет
+    
+    Возвращает:
+        * df - датафрейм
+    """
+    df=round(pd.concat([
+        train_set[cat].value_counts(normalize=True),
+        test_set[cat].value_counts(normalize=True)
+    ], keys=['train', 'test'], axis=1), 2)
+    return df
