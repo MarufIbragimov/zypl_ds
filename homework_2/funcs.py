@@ -129,9 +129,9 @@ def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_featur
 
     return results
 
-def plot_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features):
+def get_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features):
     """
-    Выводит на экран таблицу сравнений метрики ROC_AUC по категориям.
+    Создаёт таблицу сравнений метрики ROC_AUC по категориям.
 
     Принимает:
         * model - модель
@@ -140,19 +140,32 @@ def plot_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features)
         * X_test - тестовый сет предикторов
         * y_test - тестовый сет целевой переменной
         * cat_features - список категориального предикторов
+    
+    Возвращает:
+        * df - датафрейм
     """
     if type(cat_features)!=list:
         cat_features=[cat_features]
+    
+    df=pd.DataFrame()
+    columns=['Category', 'Train Count', 'Train AUC', 'Test Count', 'Test AUC']
+    
     for feature in cat_features:
         results = compute_auc_per_category(model, X_train, y_train, X_test, y_test, feature)
-        df_results = pd.DataFrame(results, columns=['Category', 'Train Count', 'Train AUC', 'Test Count', 'Test AUC'])
+        df_results = (
+            pd.DataFrame(results, columns=columns)
+            .assign(feature=feature)
+        )
         
         df_results['AUC Difference'] = df_results['Train AUC'] - df_results['Test AUC']
-        df_results_sorted = df_results.sort_values(by='AUC Difference', ascending=False)
-        
-        print(f"\nAUC and Counts for {feature} sorted by AUC difference:\n")
-        display(df_results_sorted.drop(['AUC Difference'], axis=1))
-        print("\n" + "-" * 50 + "\n")
+        df_results_sorted = (
+            df_results
+            .sort_values(by='AUC Difference', ascending=False)
+            .drop(['AUC Difference'], axis=1)
+        )
+
+        df=pd.concat([df, df_results_sorted], ignore_index=True)
+    return df
 
 
 
@@ -173,3 +186,6 @@ def compare_proportions(cat, train_set, test_set):
         test_set[cat].value_counts(normalize=True)
     ], keys=['train', 'test'], axis=1), 2)
     return df
+
+
+
