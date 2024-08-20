@@ -64,8 +64,12 @@ def build_churn_model(data, cat_features):
     auc_train=metrics.roc_auc_score(y_train, y_pred_train)
     auc_test=metrics.roc_auc_score(y_test, y_pred_test)
 
+    print(f'auc_train: {round(auc_train, 4)}')
+    print(f'auc_test: {round(auc_test, 4)}')
+    
     return model, X_train, y_train, X_test, y_test, auc_train, auc_test
 
+    
 
 
 def plot_feature_importance(model, feature_names):
