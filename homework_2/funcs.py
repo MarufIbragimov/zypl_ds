@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from IPython.display import display, Markdown
 
 from sklearn.model_selection import train_test_split
@@ -129,24 +130,37 @@ def build_model(data, cat_features, type='classifier'):
 
 #########################################################################################################################################################################################################    
 
+def get_feature_importance(model, feature_names):
+    """
+    Строит датафрейм важности признаков.
 
-def plot_feature_importance(model, feature_names):
+    Принимает:
+        * model - тренированную модель
+        * feature_names - названия предикторов
+    
+    Возвращает:
+        * df - датафрейм с отсортированными по важности предикторами
+    """
+    df=pd.DataFrame({
+        'feature':feature_names,
+        'importance':model.get_feature_importance()
+    }).sort_values(by=['importance'], ascending=False)
+
+    return df
+
+
+def plot_feature_importance(importance_df):
     """
     Создаёт диаграмму feature_importance.
 
     Принимает:
-        * model - модель
-        * feature_names - список предикторов
+        * immportance_df - датафрейм с отранжированными по важности предикторами
     """
-    feature_importance = model.get_feature_importance()
-    sorted_idx = feature_importance.argsort()
-
-    plt.figure(figsize=(10, 6))
-    plt.barh(feature_names[sorted_idx], feature_importance[sorted_idx], align='center')
-    plt.xlabel('Feature Importance')
-    plt.title('Feature Importance Plot')
-
-    plt.show()
+    sns.barplot(
+        data=importance_df,
+        y='feature',
+        x='importance'
+    );
 
 #########################################################################################################################################################################################################
 
