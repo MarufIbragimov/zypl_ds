@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from IPython.display import display, Markdown
 
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
@@ -249,3 +250,16 @@ def compare_proportions(cat, train_set, test_set):
 
 
 
+def print_in_sequence(data, column, subtitle):
+    """
+    Последовательно выводит на экран датафреймы разбитые по указанному полю.
+
+    Принимает:
+        * data - данные в виде датафрейма
+        * column - поле, по которому нужно разбить датафрейм
+        * subtitle - шаблон надписи, которую нужно отобразить над каждым сабсетом
+    """
+    for feature in data[column].unique():
+        display(Markdown(subtitle.format(feature)))
+        display(data.query(f"{column}==@feature"))
+        print("\n" + "-" * 50 + "\n") 
