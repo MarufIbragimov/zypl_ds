@@ -19,9 +19,81 @@ def get_bank_data():
     df=pd.read_csv(source_file).drop(labels=['customer_id'], axis=1)
     return df
 
+#########################################################################################################################################################################################################
+
+def split(data, target, test_size=.2):
+    """
+    Делит данные на тренировочный и тестовый сеты.
+
+    Принимает:
+        * data - датасет
+        * target - название целевой переменной
+        * test_size - пропорция тестового сета
+
+    Возвращает:
+        * X_train - тренировочный сет предикторов
+        * X_test - тестовый сет предикторов
+        * y_train - тренировочный сет целевой переменной
+        * y_test - тестовый сет целевой переменной
+    """
+    df=data.copy()
+    
+    X=df.drop(labels=[target], axis=1)
+    y=df[target]
+
+    X_train, X_test, y_train, y_test=train_test_split(X, y, test_size=.2, random_state=seed)
+    return X_train, X_test, y_train, y_test
 
 
-def build_churn_model(data, cat_features):
+def train_catboost(train_pool, test_pool, type='classifier'):
+    """
+    Тренирует модель на базе алгоритмов CatBoost.
+
+    Принимает:
+        * train_pool - тренировочный сет в формате pool
+        * test_pool - тестовый сет в формате pool
+        * type - тип алгоритма (classifier или regressor)
+    
+    Возвращает:
+        * model - тренированную модель
+    """
+    if type=='classifier':
+        model=CatBoostClassifier(
+            random_state=seed,
+            depth=2,
+            eval_metric='AUC',
+            verbose=0
+        )
+
+    model.fit(train_pool, eval_set=test_pool, plot=True)
+    return model
+
+
+def evaluate(model, train_pool, test_pool, y_train, y_test):
+    """
+    Оценивает модель по метрике ROC_AUC.
+
+    Принимает:
+        * model - тренированную модель
+        * train_pool - тренировочный сет предикторов в формате pool
+        * test_pool - тестовый сет предикторов в формате pool
+        * y_train - тренировочный сет целевой переменной
+        * y_test - тестовый сет целевой переменной
+    
+    Возвращает:
+        * auc_train - оценку ROC_AUC на тренировочном сете
+        * auc_test - оценку ROC_AUC на тестовом сете
+    """
+    y_pred_train=model.predict(train_pool)
+    y_pred_test=model.predict(test_pool)
+
+    auc_train=metrics.roc_auc_score(y_train, y_pred_train)
+    auc_test=metrics.roc_auc_score(y_test, y_pred_test)
+
+    return auc_train, auc_test
+
+
+def build_model(data, cat_features, type='classifier'):
     """
     Создаёт модель предсказания оттока клиентов банка на основе алгоритма CatBoostClassifier.
 
@@ -38,38 +110,22 @@ def build_churn_model(data, cat_features):
         * auc_train - ROC_AUC тренировочного сета, 
         * auc_test - ROC_AUC тестового сета
     """    
-    target='churn'
-    df=data.copy()
 
-    X=df.drop(labels=[target], axis=1)
-    y=df[target]
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2, random_state=seed)
+    X_train, X_test, y_train, y_test = split(data, 'churn')
 
     train_pool=Pool(data=X_train, label=y_train, cat_features=cat_features)
     test_pool=Pool(data=X_test, label=y_test, cat_features=cat_features)
 
-    model=CatBoostClassifier(
-        random_state=seed,
-        depth=2,
-        eval_metric='AUC',
-        verbose=0
-    )
+    model=train_catboost(train_pool, test_pool, type)    
 
-    model.fit(train_pool, eval_set=test_pool, plot=True)
-
-    y_pred_train=model.predict(train_pool)
-    y_pred_test=model.predict(test_pool)
-
-    auc_train=metrics.roc_auc_score(y_train, y_pred_train)
-    auc_test=metrics.roc_auc_score(y_test, y_pred_test)
+    auc_train, auc_test=evaluate(model, train_pool, test_pool, y_train, y_test)    
 
     print(f'auc_train: {round(auc_train, 4)}')
     print(f'auc_test: {round(auc_test, 4)}')
     
     return model, X_train, y_train, X_test, y_test, auc_train, auc_test
 
-    
+#########################################################################################################################################################################################################    
 
 
 def plot_feature_importance(model, feature_names):
@@ -90,7 +146,7 @@ def plot_feature_importance(model, feature_names):
 
     plt.show()
 
-
+#########################################################################################################################################################################################################
 
 def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_feature):
     """
@@ -171,7 +227,7 @@ def get_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features):
         df=pd.concat([df, df_results_sorted], ignore_index=True)
     return df
 
-
+#########################################################################################################################################################################################################
 
 def compare_proportions(cat, train_set, test_set):
     """
