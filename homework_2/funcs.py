@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn import metrics
 from catboost import CatBoostClassifier, Pool
 
+from sklearn.preprocessing import PolynomialFeatures
 
 seed=42
 
@@ -248,7 +249,7 @@ def compare_proportions(cat, train_set, test_set):
     ], keys=['train', 'test'], axis=1), 2)
     return df
 
-
+#########################################################################################################################################################################################################
 
 def print_in_sequence(data, column, subtitle):
     """
@@ -263,3 +264,17 @@ def print_in_sequence(data, column, subtitle):
         display(Markdown(subtitle.format(feature)))
         display(data.query(f"{column}==@feature"))
         print("\n" + "-" * 50 + "\n") 
+
+#########################################################################################################################################################################################################
+
+def add_polynomes(data, num_features):
+    num_df = data[num_features].copy()
+
+    poly = PolynomialFeatures(degree=4, include_bias=False, interaction_only=False)
+
+    poly_features = poly.fit_transform(num_df)
+    poly_feature_names = poly.get_feature_names_out(input_features=num_df.columns)
+    poly_df = pd.DataFrame(poly_features, columns=poly_feature_names)
+    df = pd.concat([data.drop(num_features, axis=1), poly_df], axis=1)
+
+    return df
