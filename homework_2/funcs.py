@@ -9,6 +9,7 @@ from sklearn import metrics
 from catboost import CatBoostClassifier, Pool
 
 from sklearn.preprocessing import PolynomialFeatures
+import featuretools as ft
 
 seed=42
 
@@ -335,3 +336,36 @@ def add_aggregations(data, cat_features, cont_features):
                 df[f'{cont}_{k}']=df.groupby(cat, observed=True)[cont].transform(v)
 
     return df
+
+#########################################################################################################################################################################################################
+
+def add_some_math(data, cat_features):
+
+    df=data.copy()
+
+    es = ft.EntitySet(id = 'bank_churns')
+    es = es.add_dataframe(
+        dataframe_name='churns',
+        dataframe = df.drop(labels=['churn'], axis=1),
+        #variable_types = {x: ft.variable_types.Categorical for x in cat_features},
+        #make_index = True,
+        index = 'index'
+    )
+
+    trans_primitives = ['sine', 'cosine', 'natural_logarithm', 'square_root', 'add_numeric']
+
+    features, feature_defs = ft.dfs(
+        entityset=es,
+        target_dataframe_name='churns',
+        #logical_types={x:ft.variable_types.Categorical for x in cat_features},
+        trans_primitives=trans_primitives
+    )
+
+    features=features.merge(
+        right=df[['churn']],
+        how='left',
+        left_index=True,
+        right_index=True
+    )
+
+    return features, feature_defs
