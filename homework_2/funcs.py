@@ -268,6 +268,16 @@ def print_in_sequence(data, column, subtitle):
 #########################################################################################################################################################################################################
 
 def add_polynomes(data, num_features):
+    """
+    Считает и добавляет полиномы в виде новых полей в переданный датасет.
+
+    Принимает:
+        * data - датафрейм с данными
+        * num_features - список числовых столбцов
+
+    Возвращает:
+        * df - датафрейм с добавленными полиномиальными полями 
+    """
     num_df = data[num_features].copy()
 
     poly = PolynomialFeatures(degree=4, include_bias=False, interaction_only=False)
@@ -276,5 +286,38 @@ def add_polynomes(data, num_features):
     poly_feature_names = poly.get_feature_names_out(input_features=num_df.columns)
     poly_df = pd.DataFrame(poly_features, columns=poly_feature_names)
     df = pd.concat([data.drop(num_features, axis=1), poly_df], axis=1)
+
+    return df
+
+#########################################################################################################################################################################################################
+
+def add_aggregations(data, cat_features, cont_features):
+    """
+    Считает и добавляет аггрегированные значения по категориям в переданный датафрейм.
+
+    Принимает:
+        * data - датафрейм с данными
+        * cat_features - список категориальных полей
+        * cont_features - список полей с числовыми значениями
+
+    Возвращает:
+        * df - датафрейм с добавленными аггрегациями по категориям
+    """
+    df=data.copy()
+
+    stats_dict={
+        'mean':'mean',
+        'std':'std',
+        'median':lambda x: x.quantile(.5),
+        'q1':lambda x: x.quantile(.25),
+        'q3':lambda x: x.quantile(.25),
+        'min':'min',
+        'max':'max'
+    }
+
+    for cat in cat_features:
+        for cont in cont_features:
+            for k, v in stats_dict.items():
+                df[f'{cont}_{k}']=df.groupby(cat, observed=True)[cont].transform(v)
 
     return df
