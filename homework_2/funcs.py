@@ -11,6 +11,9 @@ from catboost import CatBoostClassifier, Pool
 from sklearn.preprocessing import PolynomialFeatures
 import featuretools as ft
 
+import shap
+
+
 seed=42
 
 def get_bank_data():
@@ -369,3 +372,21 @@ def add_some_math(data, cat_features):
     )
 
     return features, feature_defs
+
+#########################################################################################################################################################################################################
+
+def plot_shap(model, model_name, X_train):
+    """
+    Визуализирует SHAP (SHapley Additive exPlanations) summary.
+
+    Принимает:
+        * model - тренированная модель
+        * model_name - название модели
+        * X_train - тренировочный сет
+    """
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_train)
+
+    plt.figure(figsize=(10, 30))
+    plt.title(f'SHAP plot for {model_name}', loc='center', fontdict={'fontsize':20}, pad=20)
+    shap.summary_plot(shap_values, X_train)
