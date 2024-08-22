@@ -12,7 +12,7 @@ from sklearn.preprocessing import PolynomialFeatures
 import featuretools as ft
 
 import shap
-
+from sklearn.feature_selection import RFECV
 
 seed=42
 
@@ -52,6 +52,19 @@ def split(data, target, test_size=.2):
     return X_train, X_test, y_train, y_test
 
 
+def make_classifier(depth=2, n_estimators=None):
+    
+    model=CatBoostClassifier(
+        random_state=seed,
+        depth=depth,
+        n_estimators=n_estimators,
+        eval_metric='AUC',
+        verbose=0
+    )
+
+    return model
+
+
 def train_catboost(train_pool, test_pool, type='classifier'):
     """
     Тренирует модель на базе алгоритмов CatBoost.
@@ -65,12 +78,7 @@ def train_catboost(train_pool, test_pool, type='classifier'):
         * model - тренированную модель
     """
     if type=='classifier':
-        model=CatBoostClassifier(
-            random_state=seed,
-            depth=2,
-            eval_metric='AUC',
-            verbose=0
-        )
+        model=make_classifier()
 
     model.fit(train_pool, eval_set=test_pool, plot=True)
     return model
@@ -390,3 +398,21 @@ def plot_shap(model, model_name, X_train):
     plt.figure(figsize=(10, 30))
     plt.title(f'SHAP plot for {model_name}', loc='center', fontdict={'fontsize':20}, pad=20)
     shap.summary_plot(shap_values, X_train)
+
+#########################################################################################################################################################################################################
+
+def select_features_recursively(X, y, cv=3, min_features_to_select=1):
+    rfecv = RFECV(
+        estimator=make_classifier(n_estimators=100),
+        step=1,
+        cv=cv,
+        scoring="roc_auc",
+        min_features_to_select=min_features_to_select,
+        n_jobs=-1,
+    )
+    
+    rfecv.fit(X, y)
+    
+    selected_features=rfecv.get_feature_names_out().tolist()
+
+    return selected_features
