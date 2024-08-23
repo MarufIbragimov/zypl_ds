@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 from IPython.display import display, Markdown
 
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
-from catboost import CatBoostClassifier, Pool
+from catboost import CatBoostClassifier, CatBoostRegressor, Pool
 
 from sklearn.preprocessing import PolynomialFeatures
 import featuretools as ft
@@ -82,6 +83,18 @@ def make_classifier(depth=2, n_estimators=None):
     return model
 
 
+def make_regressor(depth=2, n_estimators=None):
+    model=CatBoostRegressor(
+        random_state=seed,
+        depth=depth,
+        n_estimators=n_estimators,
+        eval_metric='R2',
+        verbose=0
+    )
+
+    return model
+
+
 def train_catboost(train_pool, test_pool, type='classifier'):
     """
     Тренирует модель на базе алгоритмов CatBoost.
@@ -96,12 +109,13 @@ def train_catboost(train_pool, test_pool, type='classifier'):
     """
     if type=='classifier':
         model=make_classifier()
-
+    else:
+        model=make_regressor()
     model.fit(train_pool, eval_set=test_pool, plot=True)
     return model
 
 
-def evaluate(model, X_train, X_test, y_train, y_test):
+def evaluate(model, X_train, X_test, y_train, y_test, type='classifier'):
     """
     Оценивает модель по метрике ROC_AUC.
 
@@ -111,21 +125,62 @@ def evaluate(model, X_train, X_test, y_train, y_test):
         * test_pool - тестовый сет предикторов в формате pool
         * y_train - тренировочный сет целевой переменной
         * y_test - тестовый сет целевой переменной
-    
+        * type - тип алгоритма
     Возвращает:
-        * auc_train - оценку ROC_AUC на тренировочном сете
-        * auc_test - оценку ROC_AUC на тестовом сете
+        * словарь с метриками
     """
+
+    def calculate(func, y, y_pred):
+        try:
+            return func(y, y_pred)
+        except:
+            return np.nan
+
+    def adjust(r2, x):
+        n, p = x.shape
+        adj_r2= 1-(1-r2)*(n-1)/(n-p-1)
+        return adj_r2
+
     y_pred_train=model.predict(X_train)
     y_pred_test=model.predict(X_test)
+    
+    if type=='classifier':
+        auc_train=calculate(metrics.roc_auc_score, y_train, y_pred_train)
+        auc_test=calculate(metrics.roc_auc_score, y_test, y_pred_test)
 
-    auc_train=metrics.roc_auc_score(y_train, y_pred_train)
-    auc_test=metrics.roc_auc_score(y_test, y_pred_test)
+        return {
+            'auc_train': auc_train, 
+            'auc_test':auc_test
+        }
+    
+    else:
+        mae_train=calculate(metrics.mean_absolute_error, y_train, y_pred_train)
+        mae_test=calculate(metrics.mean_absolute_error, y_test, y_pred_test)
+        mse_train=calculate(metrics.mean_squared_error, y_train, y_pred_train)
+        mse_test=calculate(metrics.mean_squared_error, y_test, y_pred_test)
+        rmse_train=np.sqrt(mse_train) if not np.isnan(mse_train)  else mse_train
+        rmse_test=np.sqrt(mse_test) if not np.isnan(mse_test) else mse_test
+        mape_train=metrics.mean_absolute_percentage_error(y_train, y_pred_train)
+        mape_test=metrics.mean_absolute_percentage_error(y_test, y_pred_test)
 
-    return auc_train, auc_test
+        r2_train=metrics.r2_score(y_train, y_pred_train)
+        r2_test=metrics.r2_score(y_test, y_pred_test)
+        adj_r2_train=adjust(r2_train, X_train) if not np.isnan(r2_train) else r2_train
+        adj_r2_test=adjust(r2_test, X_test) if not np.isnan(r2_test) else r2_test
 
 
-def build_model(data, cat_features, type='classifier'):
+        return {
+            'mae_train':mae_train, 'mae_test':mae_test,
+            'mse_train':mse_train, 'mse_test':mse_test,
+            'rmse_train':rmse_train, 'rmse_test':rmse_test,
+            'mape_train':mape_train, 'mape_test':mape_test,
+            'r2_train':r2_train, 'r2_test':r2_test,
+            'adj_r2_train':adj_r2_train, 'adj_r2_test':adj_r2_test
+        }
+
+
+
+def build_model(data, cat_features, type='classifier', target='churn'):
     """
     Создаёт модель предсказания оттока клиентов банка на основе алгоритма CatBoostClassifier.
 
@@ -133,6 +188,7 @@ def build_model(data, cat_features, type='classifier'):
         * data - датафрейм содержащий данные банка
         * cat_features - список категориальных полей
         * type - тип модели
+        * target - название целевой переменной
 
     Возвращает:
         * model - тренированная на данных модель
@@ -140,23 +196,27 @@ def build_model(data, cat_features, type='classifier'):
         * y_train - тренировочный сет целевой переменной, 
         * X_test - тестовый сет предикторов, 
         * y_test - тестовый сет целевой переменной, 
-        * auc_train - ROC_AUC тренировочного сета, 
-        * auc_test - ROC_AUC тестового сета
+        * model_metrics - словарь с метриками
     """    
 
-    X_train, X_test, y_train, y_test = split(data, 'churn')
+    X_train, X_test, y_train, y_test = split(data, target)
 
     train_pool=Pool(data=X_train, label=y_train, cat_features=cat_features)
     test_pool=Pool(data=X_test, label=y_test, cat_features=cat_features)
 
     model=train_catboost(train_pool, test_pool, type)    
 
-    auc_train, auc_test=evaluate(model, train_pool, test_pool, y_train, y_test)    
+    #auc_train, auc_test=evaluate(model, train_pool, test_pool, y_train, y_test, type)    
+    model_metrics=evaluate(model, train_pool, test_pool, y_train, y_test, type)
 
-    print(f'auc_train: {round(auc_train, 4)}')
-    print(f'auc_test: {round(auc_test, 4)}')
+    for k, v in model_metrics.items():
+        if 'train' in k: 
+            end=', '
+        else:
+            end='\n'
+        print(f'{k}: {round(v, 4)}', end=end)
     
-    return model, X_train, y_train, X_test, y_test, auc_train, auc_test
+    return model, X_train, y_train, X_test, y_test, model_metrics
 
 #########################################################################################################################################################################################################    
 
@@ -194,7 +254,7 @@ def plot_feature_importance(importance_df):
 
 #########################################################################################################################################################################################################
 
-def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_feature):
+def compute_metrics_per_category(model, X_train, y_train, X_test, y_test, cat_feature, type='classifier'):
     """
     Считает ROC_AUC по указанной категории.
 
@@ -205,13 +265,14 @@ def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_featur
         * X_test - тестовый сет предикторов
         * y_test - тестовый сет целевой переменной
         * cat_feature - название категориального предиктора 
+        * type - тип алгоритма
 
     Возвращает:
         * список, содержащий:
             - category - название категории
             - train_count - количество наблюдений в тренировочном сете
-            - train_auc - ROC_AUC тренировочного сета
             - test_count - количество наблюдений в тестовом сете
+            - train_auc - ROC_AUC тренировочного сета
             - test_auc - ROC_AUC тестового сета
     """
     unique_categories = X_train[cat_feature].unique()
@@ -223,15 +284,10 @@ def compute_auc_per_category(model, X_train, y_train, X_test, y_test, cat_featur
         
         train_count = np.sum(train_indices)
         test_count = np.sum(test_indices)
-        
-        try:
-            train_auc = metrics.roc_auc_score(y_train[train_indices], model.predict(X_train[train_indices]))
-            test_auc = metrics.roc_auc_score(y_test[test_indices], model.predict(X_test[test_indices]))
-        except ValueError:
-            train_auc = np.nan
-            test_auc = np.nan
+            
+        model_metrics=evaluate(model, X_train[train_indices], X_test[test_indices], y_train[train_indices], y_test[test_indices], type=type)
 
-        results.append([category, train_count, train_auc, test_count, test_auc])
+        results.append([category, train_count, test_count]+[v for v in model_metrics.values()])
 
     return results
 
@@ -254,10 +310,10 @@ def get_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features):
         cat_features=[cat_features]
     
     df=pd.DataFrame()
-    columns=['Category', 'Train Count', 'Train AUC', 'Test Count', 'Test AUC']
+    columns=['Category', 'Train Count', 'Test Count', 'Train AUC', 'Test AUC']
     
     for feature in cat_features:
-        results = compute_auc_per_category(model, X_train, y_train, X_test, y_test, feature)
+        results = compute_metrics_per_category(model, X_train, y_train, X_test, y_test, feature)
         df_results = (
             pd.DataFrame(results, columns=columns)
             .assign(feature=feature)
@@ -271,6 +327,38 @@ def get_auc_per_category(model, X_train, y_train, X_test, y_test, cat_features):
         )
 
         df=pd.concat([df, df_results_sorted], ignore_index=True)
+    return df
+
+def get_metrics_per_category(model, X_train, y_train, X_test, y_test, cat_features):
+    """
+    Создаёт таблицу сравнений метрики ROC_AUC по категориям.
+
+    Принимает:
+        * model - модель
+        * X_train - тренировочный сет предикторов
+        * y_train - тренировочный сет целевой переменной
+        * X_test - тестовый сет предикторов
+        * y_test - тестовый сет целевой переменной
+        * cat_features - список категориального предикторов
+    
+    Возвращает:
+        * df - датафрейм
+    """
+    if type(cat_features)!=list:
+        cat_features=[cat_features]
+    
+    df=pd.DataFrame()
+    columns=['Category', 'Train Count', 'Test Count', 'mae_train', 'mae_test', 'mse_train', 'mse_test', 'rmse_train', 'rmse_test', 
+             'mape_train', 'mape_test', 'r2_train', 'r2_test', 'adj_r2_train', 'adj_r2_test']
+    
+    for feature in cat_features:
+        results = compute_metrics_per_category(model, X_train, y_train, X_test, y_test, feature, type='regressor')
+        df_results = (
+            pd.DataFrame(results, columns=columns)
+            .assign(feature=feature)
+        )
+
+        df=pd.concat([df, df_results], ignore_index=True)
     return df
 
 #########################################################################################################################################################################################################
@@ -459,7 +547,7 @@ def build_stacked_model(data, cat_cols, estimators):
     
     for model in estimators.values():
         model.fit(X_train, y_train)
-        auc_train, auc_test = evaluate(model, X_train, X_test, y_train, y_test)
+        auc_train, auc_test = evaluate(model, X_train, X_test, y_train, y_test).values()
         print(f"{model.__class__.__name__} AUC train: {auc_train:.4f}")
         print(f"{model.__class__.__name__} AUC test: {auc_test:.4f}")
 
@@ -478,3 +566,24 @@ def build_stacked_model(data, cat_cols, estimators):
     print(f'roc_auc_test: {round(auc_test, 4)}')
 
     return stacking_model, X_train, y_train, X_test, y_test, roc_auc_train, roc_auc_test
+
+#########################################################################################################################################################################################################
+# functions used for regression hw
+#########################################################################################################################################################################################################
+
+def get_wine_data():
+    """
+    Читает данные из файла 'Bank Customer Churn Prediction.csv'.
+    Возвращает датафрейм.
+    """
+    source_fol=Path(r'data/wine_quality')
+    source_files=list(Path.glob(source_fol, '*.csv'))
+    
+    df=pd.concat(
+        list(map(
+            lambda x: pd.read_csv(x, sep=';').assign(color=x.stem.split('-')[-1]),
+            source_files
+        )),
+        ignore_index=True
+    )
+    return df
