@@ -14,6 +14,12 @@ import featuretools as ft
 import shap
 from sklearn.feature_selection import RFECV
 
+import category_encoders as ce
+#from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import StackingClassifier
+
+
+
 seed=42
 
 def get_bank_data():
@@ -28,7 +34,7 @@ def get_bank_data():
 
 #########################################################################################################################################################################################################
 
-def split(data, target, test_size=.2):
+def split(data, target, test_size=.2, cat_encode=False, cat_cols=None,):
     """
     Делит данные на тренировочный и тестовый сеты.
 
@@ -36,7 +42,8 @@ def split(data, target, test_size=.2):
         * data - датасет
         * target - название целевой переменной
         * test_size - пропорция тестового сета
-
+        * cat_encode - параметр указывающий следует ли кодировать категориальные столбцы
+        * cat_cols - список категориальных столбцов
     Возвращает:
         * X_train - тренировочный сет предикторов
         * X_test - тестовый сет предикторов
@@ -48,12 +55,22 @@ def split(data, target, test_size=.2):
     X=df.drop(labels=[target], axis=1)
     y=df[target]
 
-    X_train, X_test, y_train, y_test=train_test_split(X, y, test_size=.2, random_state=seed)
+    if cat_encode:
+        target_encoder = ce.TargetEncoder(cols=cat_cols)
+        X = target_encoder.fit_transform(X, y)
+     
+    X_train, X_test, y_train, y_test=train_test_split(X, y, test_size=test_size, random_state=seed)
     return X_train, X_test, y_train, y_test
 
 
 def make_classifier(depth=2, n_estimators=None):
-    
+    """
+    Создаёт классификатор.
+
+    Принимает:
+        * depth - количество нод
+        * n_estimator - количество деревьев
+    """
     model=CatBoostClassifier(
         random_state=seed,
         depth=depth,
@@ -84,7 +101,7 @@ def train_catboost(train_pool, test_pool, type='classifier'):
     return model
 
 
-def evaluate(model, train_pool, test_pool, y_train, y_test):
+def evaluate(model, X_train, X_test, y_train, y_test):
     """
     Оценивает модель по метрике ROC_AUC.
 
@@ -99,8 +116,8 @@ def evaluate(model, train_pool, test_pool, y_train, y_test):
         * auc_train - оценку ROC_AUC на тренировочном сете
         * auc_test - оценку ROC_AUC на тестовом сете
     """
-    y_pred_train=model.predict(train_pool)
-    y_pred_test=model.predict(test_pool)
+    y_pred_train=model.predict(X_train)
+    y_pred_test=model.predict(X_test)
 
     auc_train=metrics.roc_auc_score(y_train, y_pred_train)
     auc_test=metrics.roc_auc_score(y_test, y_pred_test)
@@ -115,6 +132,7 @@ def build_model(data, cat_features, type='classifier'):
     Принимает:
         * data - датафрейм содержащий данные банка
         * cat_features - список категориальных полей
+        * type - тип модели
 
     Возвращает:
         * model - тренированная на данных модель
@@ -416,3 +434,47 @@ def select_features_recursively(X, y, cv=3, min_features_to_select=1):
     selected_features=rfecv.get_feature_names_out().tolist()
 
     return selected_features
+
+#########################################################################################################################################################################################################
+
+def build_stacked_model(data, cat_cols, estimators):
+    """
+    Создаёт модель предсказания оттока клиентов банка с применением стеккинга.
+
+    Принимает:
+        * data - датафрейм содержащий данные банка
+        * cat_cols - список категориальных полей
+        * estimators - словарь содержащий базовые модели
+
+    Возвращает:
+        * model - тренированная на данных модель
+        * X_train - тренировочный сет предикторов, 
+        * y_train - тренировочный сет целевой переменной, 
+        * X_test - тестовый сет предикторов, 
+        * y_test - тестовый сет целевой переменной, 
+        * roc_auc_train - ROC_AUC тренировочного сета, 
+        * roc_auc_test - ROC_AUC тестового сета
+    """
+    X_train, X_test, y_train, y_test = split(data, target='churn', cat_cols=cat_cols, cat_encode=True)
+    
+    for model in estimators.values():
+        model.fit(X_train, y_train)
+        auc_train, auc_test = evaluate(model, X_train, X_test, y_train, y_test)
+        print(f"{model.__class__.__name__} AUC train: {auc_train:.4f}")
+        print(f"{model.__class__.__name__} AUC test: {auc_test:.4f}")
+
+    catboost_model = make_classifier(depth=3, n_estimators=100)
+
+    stacking_model = StackingClassifier(
+        estimators=[(k, v) for k,v in estimators.items()],
+        final_estimator=catboost_model
+    )
+
+    stacking_model.fit(X_train, y_train)
+
+    roc_auc_train, roc_auc_test = evaluate(stacking_model, X_train, X_test, y_train, y_test)
+
+    print(f'\nroc_auc_train: {round(auc_train, 4)}')
+    print(f'roc_auc_test: {round(auc_test, 4)}')
+
+    return stacking_model, X_train, y_train, X_test, y_test, roc_auc_train, roc_auc_test
